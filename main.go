@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"time"
-	"log"
 )
 
 type Notify struct {
@@ -26,15 +25,13 @@ func main() {
 	http.Handle("/events/", b)
 
 	go func() {
-		for i := 0; ; i++ {
+		for {
 
 			// Create a little message to send to clients,
 			// including the current time.
-			b.message <- fmt.Sprintf("%d - the time is %v", i, time.Now())
+			b.message <- fmt.Sprintf("the time is %v", time.Now())
 
-			// Print a nice log message and sleep for 5s.
-			log.Printf("Sent message %d ", i)
-			time.Sleep(1000)
+			<-time.After(1 * time.Second)
 
 		}
 	}()
@@ -43,8 +40,6 @@ func main() {
 }
 
 func (notify *Notify) Start() {
-
-	log.Println("Push handler in new go routine")
 
 	go func() {
 		for {
@@ -60,9 +55,7 @@ func (notify *Notify) Start() {
 				for s, _ := range notify.subscriber {
 					s <- message
 				}
-
 			}
-
 		}
 	}()
 }
@@ -74,15 +67,6 @@ func (n *Notify) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	addHeaders(w)
 	n.newClient <- messageChan
 
-	//type assertion
-	//f, ok := w.(http.Flusher)
-	//if !ok {
-	//	http.Error(w, "Streaming unsupported!", http.StatusInternalServerError)
-	//	return
-	//}
-
-	log.Println(messageChan)
-
 	for {
 		msg, open := <-messageChan
 		if !open {
@@ -90,10 +74,7 @@ func (n *Notify) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		fmt.Fprintf(w, "data: Message: %s\n\n", msg)
-
 	}
-
-	log.Println("Finished HTTP request at ", r.URL.Path)
 }
 
 func addHeaders(w http.ResponseWriter) {
