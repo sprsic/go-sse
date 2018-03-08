@@ -2,58 +2,52 @@ package main
 
 import (
 	"fmt"
-	"net/http"
 	"time"
 )
 
 type Notify struct {
-	subscriber map[chan string]int
+	// one subs
+	subscriber map[chan string]struct{}
 	message    chan string
 	newClient  chan chan string
 }
 
 func main() {
+
 	b := &Notify{
-		make(map[chan string]int),
+		make(map[chan string]struct{}),
 		make(chan string),
 		make(chan (chan string)),
 	}
 
 	// Start processing events
-	b.Start()
-
-	http.Handle("/events/", b)
-
-	go func() {
+	b.Process()
+	//send channel
+	go func(message chan<- string) {
 		for {
-
-			// Create a little message to send to clients,
-			// including the current time.
-			b.message <- fmt.Sprintf("the time is %v", time.Now())
-
-			<-time.After(1 * time.Second)
-
+			time.Sleep(time.Second * 1)
+			//send msg every second
+			message <- fmt.Sprintf("%v", time.Now())
 		}
-	}()
+	}(b.message)
 
-	http.ListenAndServe(":9999", nil)
+	// keep main alive
+	b.run()
 }
 
-func (notify *Notify) Start() {
-
+func (notify *Notify) Process() {
 	go func() {
 		for {
 			select {
-
-			case client := <-notify.newClient:
-
-				notify.subscriber[client] = 1
-
-			case message := <-notify.message:
-
+			case client := <-notify.newClient: // chan string
+				fmt.Println("new client registred")
+				notify.subscriber[client] = struct{}{}
+			case message := <-notify.message: // string
 				// push to all subscriber
-				for s, _ := range notify.subscriber {
-					s <- message
+				fmt.Println("push message to sub")
+				// key is the subscriber
+				for k, _ := range notify.subscriber {
+					k <- message
 				}
 			}
 		}
@@ -61,24 +55,15 @@ func (notify *Notify) Start() {
 }
 
 // handler for http
-func (n *Notify) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (n *Notify) run() {
+
 	messageChan := make(chan string)
-
-	addHeaders(w)
+	// initial client
 	n.newClient <- messageChan
-
 	for {
-		msg, open := <-messageChan
-		if !open {
-			break
+		select {
+		case msg := <-messageChan:
+			fmt.Println("Current time: ", msg)
 		}
-
-		fmt.Fprintf(w, "data: Message: %s\n\n", msg)
 	}
-}
-
-func addHeaders(w http.ResponseWriter) {
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Connection", "keep-alive")
 }
